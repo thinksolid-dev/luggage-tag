@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baggage Contact / 行李失主联络</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f4f4f7;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #333;
+    }
+    .card {
+      background: #ffffff;
+      max-width: 440px;
+      width: 100%;
+      padding: 28px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0;
+    }
+    .badge {
+      display: inline-block;
+      background: #eef2ff;
+      color: #4338ca;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 4px 0;
+      color: #0f172a;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #64748b;
+      margin: 0 0 20px 0;
+    }
+    .alert-notice {
+      background-color: #f0fdf4;
+      border-left: 4px solid #22c55e;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #15803d;
+      margin-bottom: 24px;
+      border-radius: 0 6px 6px 0;
+    }
+    .info-group {
+      margin-bottom: 16px;
+    }
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e293b;
+      word-break: break-all;
+    }
+    .actions {
+      margin-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn {
+      display: block;
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .btn-call {
+      background-color: #0284c7;
+      color: white;
+    }
+    .btn-email {
+      background-color: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <span class="badge">🧳 Luggage Contact / 行李联系卡</span>
+    <h1>Lost Baggage Info</h1>
+    <p class="subtitle">行李失主联络方式</p>
+
+    <div class="alert-notice">
+      The owner has been notified of this scan.<br>
+      失主已收到扫码提醒。
+    </div>
+
+    <div class="info-group">
+      <div class="label">Passenger / 旅客姓名</div>
+      <div class="value">Philipp Abt</div>
+    </div>
+
+    <div class="info-group">
+      <div class="label">Phone / 电话</div>
+      <div class="value">+4915208849831</div>
+    </div>
+
+    <div class="info-group">
+      <div class="label">Email / 电子邮箱</div>
+      <div class="value">p.abt15@gmx.de</div>
+    </div>
+
+    <div class="actions">
+      <!-- Direkter Anruf-Button für Mobilgeräte -->
+      <a class="btn btn-call" href="tel:+49[DeineMobilnummer]">📞 Call Owner / 拨打电话</a>
+      
+      <!-- Direkter E-Mail-Button -->
+      <a class="btn btn-email" href="mailto:[Deine E-Mail-Adresse]?subject=Found%20Luggage%20/%20您的行李找到了">✉️ Send Email / 发送邮件</a>
+    </div>
+  </div>
+
+  <script>
+    // Sendet im Hintergrund sofort den Ping an die ntfy-App
+    fetch('https://ntfy.sh/bag-alert-ph-2026-x9z4', {
+      method: 'POST',
+      headers: { 'Title': 'Koffer gescannt!' },
+      body: 'Jemand hat deinen Kofferanhänger aufgerufen.'
+    }).catch(function(e) {
+      console.log('Ping gesendet');
+    });
+  </script>
+
+</body>
+</html>
