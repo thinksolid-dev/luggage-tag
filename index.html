@@ -179,17 +179,24 @@
     <div id="status-msg"></div>
   </div>
 
-  <script>
-    const TOPIC_URL = 'https://ntfy.sh/bag-alert-ph-2026-x9z4';
+ <script>
+    const TOPIC_URL = 'https://ntfy.sh/DEIN-THEMENNAME';
 
-    // 1. Sofortiger stummer Scan-Alarm beim Aufruf der Seite
-    fetch(TOPIC_URL, {
-      method: 'POST',
-      headers: { 'Title': 'Baggage Tag Scanned' },
-      body: 'Baggage tag was scanned. Awaiting report from finder or staff.'
-    }).catch(console.error);
+    // 1. Bot-Prüfung und Sitzungssperre (feuert nur 1x pro Finder)
+    const isBot = /bot|crawler|spider|crawling/i.test(navigator.userAgent);
+    const alreadyTriggered = sessionStorage.getItem('scanned_alert_sent');
 
-    // 2. Bericht senden
+    if (!isBot && !alreadyTriggered) {
+      sessionStorage.setItem('scanned_alert_sent', 'true');
+
+      fetch(TOPIC_URL, {
+        method: 'POST',
+        headers: { 'Title': 'Baggage Tag Scanned' },
+        body: 'Baggage tag was scanned. Awaiting report from finder or staff.'
+      }).catch(console.error);
+    }
+
+    // 2. Bericht senden (bleibt unverändert)
     document.getElementById('contact-form').addEventListener('submit', function(e) {
       e.preventDefault();
       const input = document.getElementById('msg');
