@@ -19,7 +19,7 @@
     }
     .card {
       background: #ffffff;
-      max-width: 420px;
+      max-width: 440px;
       width: 100%;
       padding: 28px;
       border-radius: 16px;
@@ -27,23 +27,70 @@
       border: 1px solid #e2e8f0;
     }
     h1 {
-      font-size: 20px;
-      margin: 0 0 6px 0;
+      font-size: 22px;
+      margin: 0 0 4px 0;
+      color: #0f172a;
     }
-    p {
+    .subtitle {
       font-size: 14px;
       color: #64748b;
-      margin: 0 0 20px 0;
-      line-height: 1.4;
+      margin: 0 0 18px 0;
+      font-weight: 500;
     }
     .alert-banner {
       background-color: #f0fdf4;
       border-left: 4px solid #22c55e;
-      padding: 10px 12px;
+      padding: 12px;
       font-size: 13px;
       color: #15803d;
-      margin-bottom: 20px;
-      border-radius: 0 6px 6px 0;
+      margin-bottom: 22px;
+      border-radius: 0 8px 8px 0;
+      line-height: 1.5;
+    }
+    .steps {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 22px;
+    }
+    .steps h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 0 0 12px 0;
+      color: #475569;
+    }
+    .step-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 13.5px;
+      line-height: 1.45;
+      color: #334155;
+    }
+    .step-item:last-child {
+      margin-bottom: 0;
+    }
+    .step-num {
+      background: #0284c7;
+      color: white;
+      font-weight: 700;
+      font-size: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .bilingual-sub {
+      color: #64748b;
+      font-size: 12.5px;
+      display: block;
+      margin-top: 2px;
     }
     label {
       display: block;
@@ -69,7 +116,7 @@
     }
     button {
       width: 100%;
-      padding: 12px;
+      padding: 13px;
       border: none;
       border-radius: 8px;
       background-color: #0284c7;
@@ -94,17 +141,41 @@
 
   <div class="card">
     <h1>Lost Baggage / 遗失行李</h1>
-    <p>You found my luggage! Leave a message or contact info so we can meet.<br>
-    您找到了我的行李！请留下联系方式或位置。</p>
+    <div class="subtitle">Owner Baggage Alert / 失主联络平台</div>
 
     <div class="alert-banner">
-      Owner automatically alerted via scan.<br>
-      失主已收到自动扫码定位提醒。
+      ⚡ <strong>Owner Alerted:</strong> The passenger was notified that this tag was scanned.<br>
+      ⚡ <strong>已通知失主：</strong> 失主手机已收到本次扫码提醒。
+    </div>
+
+    <div class="steps">
+      <h2>How you can help / 操作指引</h2>
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div>
+          <strong>Leave your details below</strong>
+          <span class="bilingual-sub">Enter your phone number, WeChat, or where you left the bag. / 在下方输入您的电话、微信或行李目前放置的位置。</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div>
+          <strong>Direct transmission to phone</strong>
+          <span class="bilingual-sub">Clicking send pushes your message directly to the owner's phone screen. / 点击发送后，信息会作为紧急通知直接弹在失主手机上。</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div>
+          <strong>Handover or Lost & Found</strong>
+          <span class="bilingual-sub">If you cannot wait, please hand it to airport/train staff and note it here. / 若无法等待，可转交车站/机场问询处或失物招领处并在此留言。</span>
+        </div>
+      </div>
     </div>
 
     <form id="contact-form">
-      <label for="msg">Message / 留言 / 电话 / 位置:</label>
-      <textarea id="msg" placeholder="e.g. Left at Terminal 2 Lost & Found / 或留下您的微信/电话..." required></textarea>
+      <label for="msg">Message / 留言 (Location, Phone, WeChat / 位置、电话、微信):</label>
+      <textarea id="msg" placeholder="e.g. Left at Gate 14 info desk / 示例：已交至14号登机口服务台，我的联系电话是..." required></textarea>
       <button type="submit" id="btn-submit">Send to Owner / 发送给失主</button>
     </form>
 
@@ -147,7 +218,7 @@
         input.disabled = true;
 
         status.style.color = '#15803d';
-        status.innerText = 'Message sent! Thank you / 消息已送达！感谢！';
+        status.innerText = 'Message received on owner\'s phone! / 失主手机已收到您的消息，非常感谢！';
       })
       .catch(function() {
         btn.disabled = false;
