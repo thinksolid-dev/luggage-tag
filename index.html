@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Baggage Identification & Owner Contact / 行李失主联络</title>
-  
-  <!-- Link to external stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -34,11 +32,18 @@
 
     <form id="contact-form">
       <label for="msg">Baggage Report / 信息登记 (Location / Office / Details / 存放地点及说明):</label>
-      <textarea id="msg" maxlength="1000" placeholder="e.g. Baggage turned over to Terminal 2 Lost & Found office. Reference ID: #12345 / 示例：行李已移交T2航站楼失物招领处，登记编号：#12345..." required></textarea>
+      <textarea id="msg" minlength="10" maxlength="1000" placeholder="e.g. Baggage turned over to Terminal 2 Lost & Found office. Reference ID: #12345 / 示例：行李已移交T2航站楼失物招领处，登记编号：#12345..." required></textarea>
       <button type="submit" id="btn-submit">Submit Baggage Report / 提交信息</button>
     </form>
 
-    <div id="status-msg"></div>
+    <!-- Accessible status announcer -->
+    <div id="status-msg" aria-live="polite"></div>
+
+    <!-- Visual Queue Indicator and Manual Resync Trigger -->
+    <div id="queue-box" class="queue-box" style="display: none;">
+      <span id="queue-text">Pending reports: 0</span>
+      <button type="button" id="btn-sync" class="btn-sync-action">Retry Sync / 重新同步</button>
+    </div>
   </div>
 
   <script>
@@ -47,14 +52,89 @@
      */
     const CONFIG = {
       NTFY_TOPIC: 'bag-alert-ph-2026-x9z4',
-      REQUEST_TIMEOUT_MS: 10000, 
-      OFFLINE_STORAGE_KEY: 'baggage_offline_reports'
+      REQUEST_TIMEOUT_MS: 10000,
+      OFFLINE_STORAGE_KEY: 'baggage_offline_reports',
+      MAX_QUEUE_SIZE: 5,
+      MAX_REPORT_AGE_MS: 48 * 60 * 60 * 1000, // 48 Hours
+      MIN_INPUT_LENGTH: 10
     };
     CONFIG.NTFY_ENDPOINT = `https://ntfy.sh/${CONFIG.NTFY_TOPIC}`;
 
     /**
-     * Helper: fetchWithTimeout
-     * Wraps the native fetch API with an AbortController to prevent hanging requests.
+     * Storage Adapter: Defensive localStorage read/write
+     * Guarantees that corrupted JSON or disabled storage environments do not crash the app.
+     */
+    function getSafeQueue() {
+      try {
+        const raw = localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY);
+        if (!raw) return [];
+        
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+
+        const now = Date.now();
+        // Discard entries older than 48 hours or with invalid structures
+        const validItems = parsed.filter(item => {
+          return item && typeof item === 'object' && typeof item.body === 'string' &&
+                 (now - (item.timestamp || 0) < CONFIG.MAX_REPORT_AGE_MS);
+        });
+
+        return validItems.slice(-CONFIG.MAX_QUEUE_SIZE);
+      } catch (err) {
+        console.warn('Defensive storage read blocked or parsing failed:', err);
+        return [];
+      }
+    }
+
+    function setSafeQueue(queue) {
+      try {
+        const boundedQueue = queue.slice(-CONFIG.MAX_QUEUE_SIZE);
+        localStorage.setItem(CONFIG.OFFLINE_STORAGE_KEY, JSON.stringify(boundedQueue));
+      } catch (err) {
+        console.warn('Defensive storage write failed (e.g., quota exceeded):', err);
+      }
+      updateQueueUI();
+    }
+
+    /**
+     * UI Component: Queue Indicator
+     */
+    function updateQueueUI() {
+      const queueBox = document.getElementById('queue-box');
+      const queueText = document.getElementById('queue-text');
+      if (!queueBox || !queueText) return;
+
+      const queue = getSafeQueue();
+      if (queue.length > 0) {
+        queueBox.style.display = 'flex';
+        queueText.innerText = `${queue.length} report(s) pending sync / ${queue.length} 条待同步`;
+      } else {
+        queueBox.style.display = 'none';
+      }
+    }
+
+    /**
+     * Payload Formatter: Assembles clean, structured metadata
+     */
+    function buildStructuredPayload(userText) {
+      const now = new Date();
+      const reportId = `#R-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const localTime = now.toLocaleString();
+      const utcTime = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+      const platform = navigator.platform || 'Unknown';
+
+      return [
+        `Report ID: ${reportId}`,
+        `Time (Local): ${localTime}`,
+        `Time (UTC): ${utcTime}`,
+        `Platform: ${platform}`,
+        '----------------------------------------',
+        userText
+      ].join('\n');
+    }
+
+    /**
+     * Network Client: Fetch with AbortController timeout
      */
     async function fetchWithTimeout(resource, options = {}) {
       const { timeout = CONFIG.REQUEST_TIMEOUT_MS } = options;
@@ -71,11 +151,12 @@
 
     /**
      * Module: Automatic Scan Alert
-     * Pure ASCII headers to prevent ByteString TypeErrors in the Fetch API.
      */
     async function triggerScanAlert() {
-      if (sessionStorage.getItem('scanned_alert_sent')) {
-        return;
+      try {
+        if (sessionStorage.getItem('scanned_alert_sent')) return;
+      } catch (err) {
+        // Continue if sessionStorage is blocked
       }
 
       try {
@@ -90,26 +171,34 @@
         });
 
         if (res.ok) {
-          sessionStorage.setItem('scanned_alert_sent', 'true');
+          try {
+            sessionStorage.setItem('scanned_alert_sent', 'true');
+          } catch (e) {}
         }
       } catch (err) {
-        console.error('Scan alert failed:', err);
+        console.warn('Silent scan alert failed:', err);
       }
     }
 
     /**
-     * Module: Offline Storage & Background Sync
-     * Processes any reports queued in localStorage when the network connection is restored.
+     * Module: Background & Manual Synchronization
      */
-    async function syncOfflineReports() {
-      const queuedReports = JSON.parse(localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY) || '[]');
-      if (queuedReports.length === 0) return;
+    async function syncOfflineReports(isManual = false) {
+      const queue = getSafeQueue();
+      if (queue.length === 0) return;
 
       const statusElement = document.getElementById('status-msg');
       const btnElement = document.getElementById('btn-submit');
-      let allSuccessfullySynced = true;
+      const btnSync = document.getElementById('btn-sync');
 
-      for (let i = 0; i < queuedReports.length; i++) {
+      if (isManual && btnSync) {
+        btnSync.disabled = true;
+        btnSync.innerText = 'Syncing...';
+      }
+
+      const remainingQueue = [];
+
+      for (const item of queue) {
         try {
           const response = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
             method: 'POST',
@@ -118,34 +207,45 @@
               'Priority': 'urgent',
               'Tags': 'luggage,information_source,hourglass'
             },
-            body: queuedReports[i]
+            body: item.body
           });
 
-          if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+          if (!response.ok) {
+            remainingQueue.push(item);
+          }
         } catch (err) {
-          console.error('Failed to sync offline report in background:', err);
-          allSuccessfullySynced = false;
-          break;
+          remainingQueue.push(item);
         }
       }
 
-      if (allSuccessfullySynced) {
-        localStorage.removeItem(CONFIG.OFFLINE_STORAGE_KEY);
-        
+      setSafeQueue(remainingQueue);
+
+      if (remainingQueue.length === 0) {
         statusElement.style.color = '#15803d';
-        statusElement.innerText = 'Offline reports successfully synced with server. / 离线报告已同步送达服务器。';
-        
+        statusElement.innerText = 'All queued reports delivered successfully. / 所有报告已成功同步。';
         if (btnElement.disabled) {
           btnElement.innerText = '✓ Report Delivered / 报告已送达';
           btnElement.style.backgroundColor = '#15803d';
         }
+      } else if (isManual) {
+        statusElement.style.color = '#ca8a04';
+        statusElement.innerText = 'Sync failed. Still offline or connection unstable. / 同步失败，请检查网络。';
+      }
+
+      if (isManual && btnSync) {
+        btnSync.disabled = false;
+        btnSync.innerText = 'Retry Sync / 重新同步';
       }
     }
 
-    triggerScanAlert();
-    syncOfflineReports();
+    // Attach sync triggers
+    window.addEventListener('online', () => syncOfflineReports(false));
+    document.getElementById('btn-sync').addEventListener('click', () => syncOfflineReports(true));
 
-    window.addEventListener('online', syncOfflineReports);
+    // Initialize application state
+    triggerScanAlert();
+    updateQueueUI();
+    syncOfflineReports();
 
     /**
      * Module: Form Submission Handler
@@ -157,29 +257,40 @@
       const btnElement = document.getElementById('btn-submit');
       const statusElement = document.getElementById('status-msg');
 
-      const payload = inputElement.value.trim();
-      if (!payload) return;
+      const rawText = inputElement.value.trim();
+
+      // Minimum length validation check
+      if (rawText.length < CONFIG.MIN_INPUT_LENGTH) {
+        statusElement.style.color = '#b91c1c';
+        statusElement.innerText = `Please enter at least ${CONFIG.MIN_INPUT_LENGTH} characters. / 请至少输入 ${CONFIG.MIN_INPUT_LENGTH} 个字符。`;
+        return;
+      }
+
+      const structuredPayload = buildStructuredPayload(rawText);
 
       btnElement.disabled = true;
       btnElement.style.backgroundColor = '#94a3b8';
       btnElement.innerText = 'Submitting report... / 提交中...';
       statusElement.innerText = '';
 
-      const handleOfflineState = (data) => {
-        const queue = JSON.parse(localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY) || '[]');
-        queue.push(data);
-        localStorage.setItem(CONFIG.OFFLINE_STORAGE_KEY, JSON.stringify(queue));
+      const enqueueLocally = () => {
+        const queue = getSafeQueue();
+        queue.push({
+          timestamp: Date.now(),
+          body: structuredPayload
+        });
+        setSafeQueue(queue);
 
         inputElement.disabled = true;
         btnElement.innerText = 'Saved Offline / 已离线保存';
         btnElement.style.backgroundColor = '#ca8a04';
 
         statusElement.style.color = '#ca8a04';
-        statusElement.innerText = 'No internet connection. The report is securely saved on your device and will be sent automatically once reconnected. / 无网络连接。报告已安全保存在设备上，恢复网络后将自动发送。';
+        statusElement.innerText = 'No internet connection. Report saved locally and queued for delivery. / 无网络连接。报告已保存，将在恢复网络后发送。';
       };
 
       if (!navigator.onLine) {
-        handleOfflineState(payload);
+        enqueueLocally();
         return;
       }
 
@@ -191,23 +302,23 @@
             'Priority': 'urgent',
             'Tags': 'luggage,information_source'
           },
-          body: payload
+          body: structuredPayload
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP Error: ${response.status}`);
+          throw new Error(`HTTP ${response.status}`);
         }
 
         btnElement.innerText = '✓ Report Submitted / 报告已送达';
         btnElement.style.backgroundColor = '#15803d';
-        inputElement.disabled = true; 
+        inputElement.disabled = true;
 
         statusElement.style.color = '#15803d';
         statusElement.innerText = 'Report successfully delivered to the owner. / 信息已成功送达失主，感谢协助。';
-        
+
       } catch (err) {
-        console.error('Transmission error, falling back to offline storage:', err);
-        handleOfflineState(payload);
+        console.warn('Network submission failed, enqueuing offline:', err);
+        enqueueLocally();
       }
     });
   </script>
