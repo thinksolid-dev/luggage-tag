@@ -16,11 +16,6 @@
       <div class="subtitle">遗失行李处理与失主联络</div>
     </div>
 
-    <div class="status-box">
-      <strong>Automated Notice:</strong> The passenger has been notified of this tag scan.<br>
-      <span class="cn-text">系统提示：失主已收到行李牌扫码通知。</span>
-    </div>
-
     <div class="section-title">Instructions for Staff & Finders / 工作人员与拾得人指引</div>
     <ul class="instruction-list">
       <li class="instruction-item">
@@ -79,7 +74,6 @@
      * Pure ASCII headers to prevent ByteString TypeErrors in the Fetch API.
      */
     async function triggerScanAlert() {
-      // Prevents spamming within the same browser session
       if (sessionStorage.getItem('scanned_alert_sent')) {
         return;
       }
@@ -88,9 +82,9 @@
         const res = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
           method: 'POST',
           headers: {
-            'Title': 'Baggage Tag Scanned', // Nur reines ASCII!
+            'Title': 'Baggage Tag Scanned',
             'Priority': 'urgent',
-            'Tags': 'warning,luggage'       // ntfy wandelt 'warning' in das Warn-Icon um
+            'Tags': 'warning,luggage'
           },
           body: 'Baggage tag landing page accessed. Awaiting manual report.'
         });
@@ -102,7 +96,7 @@
         console.error('Scan alert failed:', err);
       }
     }
-    
+
     /**
      * Module: Offline Storage & Background Sync
      * Processes any reports queued in localStorage when the network connection is restored.
@@ -122,7 +116,7 @@
             headers: {
               'Title': 'Baggage Report Received (Delayed Sync)',
               'Priority': 'urgent',
-              'Tags': 'luggage,information_source,hourglass' // Hourglass tag implies delayed arrival
+              'Tags': 'luggage,information_source,hourglass'
             },
             body: queuedReports[i]
           });
@@ -131,11 +125,10 @@
         } catch (err) {
           console.error('Failed to sync offline report in background:', err);
           allSuccessfullySynced = false;
-          break; // Halt syncing process until connection is stable
+          break;
         }
       }
 
-      // If all network requests succeeded, clear the queue and update UI
       if (allSuccessfullySynced) {
         localStorage.removeItem(CONFIG.OFFLINE_STORAGE_KEY);
         
@@ -149,16 +142,13 @@
       }
     }
 
-    // Initialize scan alert and attempt to flush offline queue on application start
     triggerScanAlert();
     syncOfflineReports();
 
-    // Event Listener: Automatically sync data the moment the device reconnects to a network
     window.addEventListener('online', syncOfflineReports);
 
     /**
      * Module: Form Submission Handler
-     * Manages UI state, connection evaluation, caching, and network requests.
      */
     document.getElementById('contact-form').addEventListener('submit', async function(event) {
       event.preventDefault();
@@ -170,16 +160,11 @@
       const payload = inputElement.value.trim();
       if (!payload) return;
 
-      // Update UI to pending state
       btnElement.disabled = true;
       btnElement.style.backgroundColor = '#94a3b8';
       btnElement.innerText = 'Submitting report... / 提交中...';
       statusElement.innerText = '';
 
-      /**
-       * Sub-routine: Fallback to Offline Queue
-       * Serializes the message to local memory and alters UI to reflect pending state.
-       */
       const handleOfflineState = (data) => {
         const queue = JSON.parse(localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY) || '[]');
         queue.push(data);
@@ -187,19 +172,17 @@
 
         inputElement.disabled = true;
         btnElement.innerText = 'Saved Offline / 已离线保存';
-        btnElement.style.backgroundColor = '#ca8a04'; // Warning color (Yellow)
+        btnElement.style.backgroundColor = '#ca8a04';
 
         statusElement.style.color = '#ca8a04';
         statusElement.innerText = 'No internet connection. The report is securely saved on your device and will be sent automatically once reconnected. / 无网络连接。报告已安全保存在设备上，恢复网络后将自动发送。';
       };
 
-      // Explicit offline check before attempting fetch
       if (!navigator.onLine) {
         handleOfflineState(payload);
         return;
       }
 
-      // Attempt standard network transmission
       try {
         const response = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
           method: 'POST',
@@ -215,7 +198,6 @@
           throw new Error(`HTTP Error: ${response.status}`);
         }
 
-        // Update UI to success state
         btnElement.innerText = '✓ Report Submitted / 报告已送达';
         btnElement.style.backgroundColor = '#15803d';
         inputElement.disabled = true; 
@@ -224,7 +206,6 @@
         statusElement.innerText = 'Report successfully delivered to the owner. / 信息已成功送达失主，感谢协助。';
         
       } catch (err) {
-        // If the fetch fails due to a network error (e.g., weak signal timeout), fallback to caching
         console.error('Transmission error, falling back to offline storage:', err);
         handleOfflineState(payload);
       }
