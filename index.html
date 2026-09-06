@@ -76,32 +76,33 @@
 
     /**
      * Module: Automatic Scan Alert
+     * Pure ASCII headers to prevent ByteString TypeErrors in the Fetch API.
      */
     async function triggerScanAlert() {
-      const isBot = /bot|crawler|spider|crawling/i.test(navigator.userAgent);
-      const alreadyTriggered = sessionStorage.getItem('scanned_alert_sent');
+      // Prevents spamming within the same browser session
+      if (sessionStorage.getItem('scanned_alert_sent')) {
+        return;
+      }
 
-      if (!isBot && !alreadyTriggered && navigator.onLine) {
-        try {
-          const res = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Title': '⚠️ Baggage Tag Scanned',
-              'Priority': 'urgent',
-              'Tags': 'warning,luggage'
-            },
-            body: 'Baggage tag landing page accessed. Awaiting manual report.'
-          });
+      try {
+        const res = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Title': 'Baggage Tag Scanned', // Nur reines ASCII!
+            'Priority': 'urgent',
+            'Tags': 'warning,luggage'       // ntfy wandelt 'warning' in das Warn-Icon um
+          },
+          body: 'Baggage tag landing page accessed. Awaiting manual report.'
+        });
 
-          if (res.ok) {
-            sessionStorage.setItem('scanned_alert_sent', 'true');
-          }
-        } catch (err) {
-          console.warn('Initial scan alert failed silently:', err);
+        if (res.ok) {
+          sessionStorage.setItem('scanned_alert_sent', 'true');
         }
+      } catch (err) {
+        console.error('Scan alert failed:', err);
       }
     }
-
+    
     /**
      * Module: Offline Storage & Background Sync
      * Processes any reports queued in localStorage when the network connection is restored.
