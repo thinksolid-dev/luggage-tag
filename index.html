@@ -179,26 +179,45 @@
     <div id="status-msg"></div>
   </div>
 
- <script>
-    const TOPIC_URL = 'https://ntfy.sh/DEIN-THEMENNAME';
+  <script>
+    // -------------------------------------------------------------
+    // KONFIGURATION: Ersetze den Wert exakt durch dein geheimes Thema
+    // -------------------------------------------------------------
+    const NTFY_TOPIC = 'DEIN-THEMENNAME'; 
+    const NTFY_ENDPOINT = `https://ntfy.sh/${NTFY_TOPIC}`;
 
-    // 1. Bot-Prüfung und Sitzungssperre (feuert nur 1x pro Finder)
-    const isBot = /bot|crawler|spider|crawling/i.test(navigator.userAgent);
-    const alreadyTriggered = sessionStorage.getItem('scanned_alert_sent');
+    // 1. Automatischer Scan-Alarm (feuert 1x pro Sitzung)
+    async function triggerScanAlert() {
+      const isBot = /bot|crawler|spider|crawling/i.test(navigator.userAgent);
+      const alreadyTriggered = sessionStorage.getItem('scanned_alert_sent');
 
-    if (!isBot && !alreadyTriggered) {
-      sessionStorage.setItem('scanned_alert_sent', 'true');
+      if (!isBot && !alreadyTriggered) {
+        try {
+          const res = await fetch(NTFY_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Title': 'Baggage Tag Scanned',
+              'Priority': 'urgent',
+              'Tags': 'warning,luggage'
+            },
+            body: 'Jemand hat die Gepaeckseite aufgerufen.'
+          });
 
-      fetch(TOPIC_URL, {
-        method: 'POST',
-        headers: { 'Title': 'Baggage Tag Scanned' },
-        body: 'Baggage tag was scanned. Awaiting report from finder or staff.'
-      }).catch(console.error);
+          if (res.ok) {
+            sessionStorage.setItem('scanned_alert_sent', 'true');
+          }
+        } catch (err) {
+          console.error('Scan-Alert fehlgeschlagen:', err);
+        }
+      }
     }
 
-    // 2. Bericht senden (bleibt unverändert)
-    document.getElementById('contact-form').addEventListener('submit', function(e) {
+    triggerScanAlert();
+
+    // 2. Bericht absenden mit echter Statuscode-Pruefung
+    document.getElementById('contact-form').addEventListener('submit', async function(e) {
       e.preventDefault();
+
       const input = document.getElementById('msg');
       const btn = document.getElementById('btn-submit');
       const status = document.getElementById('status-msg');
@@ -206,32 +225,38 @@
       btn.disabled = true;
       btn.style.backgroundColor = '#94a3b8';
       btn.innerText = 'Submitting report... / 提交中...';
+      status.innerText = '';
 
-      fetch(TOPIC_URL, {
-        method: 'POST',
-        headers: {
-          'Title': 'Baggage Report Received',
-          'Priority': 'high',
-          'Tags': 'luggage,information_source'
-        },
-        body: input.value
-      })
-      .then(function() {
+      try {
+        const response = await fetch(NTFY_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Title': 'Baggage Report Received',
+            'Priority': 'urgent',
+            'Tags': 'luggage,information_source'
+          },
+          body: input.value
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server lieferte Fehlercode ${response.status}`);
+        }
+
         btn.innerText = '✓ Report Submitted / 报告已送达';
         btn.style.backgroundColor = '#15803d';
         input.disabled = true;
 
         status.style.color = '#15803d';
         status.innerText = 'Report successfully delivered to the owner. / 信息已成功送达失主，感谢协助。';
-      })
-      .catch(function() {
+      } catch (err) {
+        console.error('Sende-Fehler:', err);
         btn.disabled = false;
         btn.style.backgroundColor = '#0f172a';
         btn.innerText = 'Submit Baggage Report / 提交信息';
 
         status.style.color = '#b91c1c';
         status.innerText = 'Transmission error. Please try again. / 传输失败，请重试。';
-      });
+      }
     });
   </script>
 
