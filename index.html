@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baggage Identification & Owner Contact / 行李失主联络</title>
+  
+  <!-- Link to external stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="card">
+    <div class="header">
+      <h1>Lost Baggage Inquiry</h1>
+      <div class="subtitle">遗失行李处理与失主联络</div>
+    </div>
+
+    <div class="status-box">
+      <strong>Automated Notice:</strong> The passenger has been notified of this tag scan.<br>
+      <span class="cn-text">系统提示：失主已收到行李牌扫码通知。</span>
+    </div>
+
+    <div class="section-title">Instructions for Staff & Finders / 工作人员与拾得人指引</div>
+    <ul class="instruction-list">
+      <li class="instruction-item">
+        <strong>Report current status or location:</strong> Please specify where the item is stored or held (e.g., Lost & Found desk, counter, gate).
+        <span class="cn-text">请填写行李当前存放位置或保管部门（如失物招领处、值机柜台、登机口等）。</span>
+      </li>
+      <li class="instruction-item">
+        <strong>Direct transmission:</strong> Transmitted reports are dispatched immediately to the owner's emergency contact channel.
+        <span class="cn-text">提交的信息将直接发送至失主的紧急联络通道。</span>
+      </li>
+      <li class="instruction-item">
+        <strong>Airport / Station procedure:</strong> If turned over to custody, providing a reference or tracking number helps the passenger claim it.
+        <span class="cn-text">如已移交官方失物招领中心，建议附上登记单号或联系电话以便核对认领。</span>
+      </li>
+    </ul>
+
+    <form id="contact-form">
+      <label for="msg">Baggage Report / 信息登记 (Location / Office / Details / 存放地点及说明):</label>
+      <textarea id="msg" maxlength="1000" placeholder="e.g. Baggage turned over to Terminal 2 Lost & Found office. Reference ID: #12345 / 示例：行李已移交T2航站楼失物招领处，登记编号：#12345..." required></textarea>
+      <button type="submit" id="btn-submit">Submit Baggage Report / 提交信息</button>
+    </form>
+
+    <div id="status-msg"></div>
+  </div>
+
+  <script>
+    /**
+     * Application Configuration
+     */
+    const CONFIG = {
+      NTFY_TOPIC: 'bag-alert-ph-2026-x9z4',
+      REQUEST_TIMEOUT_MS: 10000, 
+      OFFLINE_STORAGE_KEY: 'baggage_offline_reports'
+    };
+    CONFIG.NTFY_ENDPOINT = `https://ntfy.sh/${CONFIG.NTFY_TOPIC}`;
+
+    /**
+     * Helper: fetchWithTimeout
+     * Wraps the native fetch API with an AbortController to prevent hanging requests.
+     */
+    async function fetchWithTimeout(resource, options = {}) {
+      const { timeout = CONFIG.REQUEST_TIMEOUT_MS } = options;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      
+      const response = await fetch(resource, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(id);
+      return response;
+    }
+
+    /**
+     * Module: Automatic Scan Alert
+     */
+    async function triggerScanAlert() {
+      const isBot = /bot|crawler|spider|crawling/i.test(navigator.userAgent);
+      const alreadyTriggered = sessionStorage.getItem('scanned_alert_sent');
+
+      if (!isBot && !alreadyTriggered && navigator.onLine) {
+        try {
+          const res = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Title': '⚠️ Baggage Tag Scanned',
+              'Priority': 'urgent',
+              'Tags': 'warning,luggage'
+            },
+            body: 'Baggage tag landing page accessed. Awaiting manual report.'
+          });
+
+          if (res.ok) {
+            sessionStorage.setItem('scanned_alert_sent', 'true');
+          }
+        } catch (err) {
+          console.warn('Initial scan alert failed silently:', err);
+        }
+      }
+    }
+
+    /**
+     * Module: Offline Storage & Background Sync
+     * Processes any reports queued in localStorage when the network connection is restored.
+     */
+    async function syncOfflineReports() {
+      const queuedReports = JSON.parse(localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY) || '[]');
+      if (queuedReports.length === 0) return;
+
+      const statusElement = document.getElementById('status-msg');
+      const btnElement = document.getElementById('btn-submit');
+      let allSuccessfullySynced = true;
+
+      for (let i = 0; i < queuedReports.length; i++) {
+        try {
+          const response = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Title': 'Baggage Report Received (Delayed Sync)',
+              'Priority': 'urgent',
+              'Tags': 'luggage,information_source,hourglass' // Hourglass tag implies delayed arrival
+            },
+            body: queuedReports[i]
+          });
+
+          if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        } catch (err) {
+          console.error('Failed to sync offline report in background:', err);
+          allSuccessfullySynced = false;
+          break; // Halt syncing process until connection is stable
+        }
+      }
+
+      // If all network requests succeeded, clear the queue and update UI
+      if (allSuccessfullySynced) {
+        localStorage.removeItem(CONFIG.OFFLINE_STORAGE_KEY);
+        
+        statusElement.style.color = '#15803d';
+        statusElement.innerText = 'Offline reports successfully synced with server. / 离线报告已同步送达服务器。';
+        
+        if (btnElement.disabled) {
+          btnElement.innerText = '✓ Report Delivered / 报告已送达';
+          btnElement.style.backgroundColor = '#15803d';
+        }
+      }
+    }
+
+    // Initialize scan alert and attempt to flush offline queue on application start
+    triggerScanAlert();
+    syncOfflineReports();
+
+    // Event Listener: Automatically sync data the moment the device reconnects to a network
+    window.addEventListener('online', syncOfflineReports);
+
+    /**
+     * Module: Form Submission Handler
+     * Manages UI state, connection evaluation, caching, and network requests.
+     */
+    document.getElementById('contact-form').addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const inputElement = document.getElementById('msg');
+      const btnElement = document.getElementById('btn-submit');
+      const statusElement = document.getElementById('status-msg');
+
+      const payload = inputElement.value.trim();
+      if (!payload) return;
+
+      // Update UI to pending state
+      btnElement.disabled = true;
+      btnElement.style.backgroundColor = '#94a3b8';
+      btnElement.innerText = 'Submitting report... / 提交中...';
+      statusElement.innerText = '';
+
+      /**
+       * Sub-routine: Fallback to Offline Queue
+       * Serializes the message to local memory and alters UI to reflect pending state.
+       */
+      const handleOfflineState = (data) => {
+        const queue = JSON.parse(localStorage.getItem(CONFIG.OFFLINE_STORAGE_KEY) || '[]');
+        queue.push(data);
+        localStorage.setItem(CONFIG.OFFLINE_STORAGE_KEY, JSON.stringify(queue));
+
+        inputElement.disabled = true;
+        btnElement.innerText = 'Saved Offline / 已离线保存';
+        btnElement.style.backgroundColor = '#ca8a04'; // Warning color (Yellow)
+
+        statusElement.style.color = '#ca8a04';
+        statusElement.innerText = 'No internet connection. The report is securely saved on your device and will be sent automatically once reconnected. / 无网络连接。报告已安全保存在设备上，恢复网络后将自动发送。';
+      };
+
+      // Explicit offline check before attempting fetch
+      if (!navigator.onLine) {
+        handleOfflineState(payload);
+        return;
+      }
+
+      // Attempt standard network transmission
+      try {
+        const response = await fetchWithTimeout(CONFIG.NTFY_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Title': 'Baggage Report Received',
+            'Priority': 'urgent',
+            'Tags': 'luggage,information_source'
+          },
+          body: payload
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        // Update UI to success state
+        btnElement.innerText = '✓ Report Submitted / 报告已送达';
+        btnElement.style.backgroundColor = '#15803d';
+        inputElement.disabled = true; 
+
+        statusElement.style.color = '#15803d';
+        statusElement.innerText = 'Report successfully delivered to the owner. / 信息已成功送达失主，感谢协助。';
+        
+      } catch (err) {
+        // If the fetch fails due to a network error (e.g., weak signal timeout), fallback to caching
+        console.error('Transmission error, falling back to offline storage:', err);
+        handleOfflineState(payload);
+      }
+    });
+  </script>
+
+</body>
+</html>
